@@ -20,8 +20,8 @@ jobs:
       run:
         working-directory: app
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -45,7 +45,7 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
       # GitHub zips artifacts itself, so upload the app's files rather than the zip: the artifact
       # download is then the installable zip, not a zip inside a zip.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: TVThing-Windows-${{ steps.version.outputs.version }}
           path: app/dist/app/
