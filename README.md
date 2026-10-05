@@ -181,6 +181,11 @@ Open `http://localhost:5173/?browser` (resize to 800×480) for the Car Thing app
 stand in for the Car Thing's controls. If the installed copy is already using port 17849, set
 `TVTHING_PORT` to another port for both commands.
 
+**Releasing:** set the version in `app/package.json` (and `package-lock.json`), add
+`release-notes/v<version>.md`, push, then run the **Windows** workflow from the Actions tab with
+**release** ticked. It tags the commit `v<version>` and publishes the zip. Pushing a `v<version>` tag
+does the same.
+
 **Keeping up with TV Thing:** this repository keeps TV Thing's history, so its changes can be
 merged in:
 

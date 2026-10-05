@@ -1,6 +1,7 @@
 # Builds and tests TV Thing for Windows on Windows: typecheck, unit tests, the packaged zip, and an
 # end-to-end FFmpeg conversion with the extension limited to the manifest's permissions.
-# A pushed v* tag also creates a GitHub release (notes from the annotated tag) with the zip.
+# A pushed v* tag, or a manual run with "release" ticked, also creates a GitHub release with the
+# zip, with notes from release-notes/v<version>.md.
 name: Windows
 
 on:
@@ -9,6 +10,11 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      release:
+        description: Release the version in app/package.json (tags it v<version> on this commit)
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -50,13 +56,23 @@ jobs:
           name: TVThing-Windows-${{ steps.version.outputs.version }}
           path: app/dist/app/
           if-no-files-found: error
-      - name: Attach to release
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $zip = Get-Item dist/TVThing-Windows-*.zip
-          gh release view $env:GITHUB_REF_NAME 2>$null
-          if ($LASTEXITCODE -ne 0) { gh release create $env:GITHUB_REF_NAME --title "TV Thing for Windows $env:GITHUB_REF_NAME" --notes-from-tag }
-          gh release upload $env:GITHUB_REF_NAME $zip.FullName --clobber
+          $version = '${{ steps.version.outputs.version }}'
+          $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { "v$version" }
+          if ($tag -ne "v$version") { throw "Tag $tag doesn't match version $version in app/package.json" }
+          $zip = Get-Item "dist/TVThing-Windows-$version.zip"
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            # Notes come from release-notes/<tag>.md, or else the annotated tag's message.
+            $notes = "../release-notes/$tag.md"
+            if (Test-Path $notes) { gh release create $tag --target $env:GITHUB_SHA --title "TV Thing for Windows $tag" --notes-file $notes }
+            else { gh release create $tag --target $env:GITHUB_SHA --title "TV Thing for Windows $tag" --notes-from-tag }
+            if ($LASTEXITCODE -ne 0) { throw 'Creating the release failed' }
+          }
+          gh release upload $tag $zip.FullName --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Uploading the zip failed' }
