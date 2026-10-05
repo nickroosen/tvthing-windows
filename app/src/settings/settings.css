@@ -90,6 +90,10 @@ button.quiet { border-color: transparent; background: transparent; color: var(--
 button.icon { min-width: 34px; min-height: 34px; padding: 4px; border-color: transparent; background: transparent; color: var(--muted); }
 button.icon:hover:not(:disabled) { color: var(--text); background: var(--bg); }
 button.icon.danger:hover { color: var(--danger); }
+button.quiet.danger { color: var(--danger); }
+button.quiet.danger.confirming { border-color: var(--danger); background: var(--danger); color: #fff; }
+#channels-message { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; }
+#channels-message[hidden], #delete-all[hidden] { display: none; }
 
 .channels { margin: 0; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); overflow: hidden; }
 .channels:empty { display: none; }

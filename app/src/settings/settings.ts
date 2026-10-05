@@ -25,10 +25,13 @@ import { STARTER_CHANNELS } from '../shared/starter';
 const DOC_LIMIT_BYTES = 250_000;
 const OFFSET_STEP_MS = 50;
 const OFFSET_LIMIT_MS = 5_000;
+/** How long "Delete all" waits for its confirming second click. */
+const CONFIRM_MS = 5_000;
 
 let library: Library = normalizeLibrary(null);
 let prefs: Prefs = parsePrefs(null);
 let editingID: string | null = null;
+let confirmDeleteAll: ReturnType<typeof setTimeout> | null = null;
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -79,6 +82,8 @@ function renderChannels() {
   const count = library.channels.length;
   $('count').textContent = count === 1 ? '1 channel' : `${count} channels`;
   $('empty').hidden = count > 0;
+  $('delete-all').hidden = count === 0;
+  if (count === 0) resetDeleteAll();
   library.channels.forEach((channel, index) => {
     const row = document.createElement('li');
 
@@ -127,6 +132,45 @@ function renderPrefs() {
   ($('scanlines') as HTMLInputElement).checked = prefs.scanlines;
   const offset = prefs.audioOffsetMs;
   $('offset').textContent = offset === 0 ? 'In sync' : `${(Math.abs(offset) / 1_000).toFixed(2)} s ${offset > 0 ? 'later' : 'earlier'}`;
+}
+
+// Deleting every channel: a second click confirms, and Undo puts them back.
+
+function deleteAll() {
+  const button = $<HTMLButtonElement>('delete-all');
+  if (!confirmDeleteAll) {
+    const count = library.channels.length;
+    button.textContent = count === 1 ? 'Delete 1 channel' : `Delete all ${count} channels`;
+    button.classList.add('confirming');
+    confirmDeleteAll = setTimeout(resetDeleteAll, CONFIRM_MS);
+    return;
+  }
+  resetDeleteAll();
+  const previous = library;
+  const deleted = previous.channels.length;
+  saveLibrary(removeChannels(previous, new Set(previous.channels.map((channel) => channel.id))));
+
+  const message = $('channels-message');
+  const undo = document.createElement('button');
+  undo.className = 'quiet';
+  undo.textContent = 'Undo';
+  undo.addEventListener('click', async () => {
+    message.hidden = true;
+    // Keep anything added since, after the restored channels.
+    const added = library.channels.filter((channel) => !previous.channels.some((old) => old.id === channel.id));
+    await saveLibrary({ ...previous, channels: [...previous.channels, ...added] });
+  });
+  message.className = 'message good';
+  message.replaceChildren(deleted === 1 ? 'Deleted 1 channel.' : `Deleted ${deleted} channels.`, undo);
+  message.hidden = false;
+}
+
+function resetDeleteAll() {
+  if (confirmDeleteAll) clearTimeout(confirmDeleteAll);
+  confirmDeleteAll = null;
+  const button = $<HTMLButtonElement>('delete-all');
+  button.textContent = 'Delete all…';
+  button.classList.remove('confirming');
 }
 
 function iconButton(label: string, title: string, disabled: boolean, action: () => void, extra = ''): HTMLButtonElement {
@@ -318,6 +362,7 @@ function shiftOffset(delta: number) {
 $('add').addEventListener('submit', addFromURL);
 $('import-file').addEventListener('change', (event) => importFile(event.target as HTMLInputElement));
 $('starter').addEventListener('click', addStarter);
+$('delete-all').addEventListener('click', deleteAll);
 $('export').addEventListener('click', exportChannels);
 $('scanlines').addEventListener('change', (event) => savePrefs({ ...prefs, scanlines: (event.target as HTMLInputElement).checked }));
 $('offset-down').addEventListener('click', () => shiftOffset(-OFFSET_STEP_MS));

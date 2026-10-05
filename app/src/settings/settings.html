@@ -19,8 +19,12 @@
     <section>
       <div class="section-head">
         <h2>Channels</h2>
-        <span id="count" class="muted"></span>
+        <div class="row">
+          <span id="count" class="muted"></span>
+          <button id="delete-all" class="quiet danger" hidden>Delete all…</button>
+        </div>
       </div>
+      <p id="channels-message" class="message" hidden></p>
       <ol id="channels" class="channels"></ol>
       <p id="empty" class="empty" hidden>No channels yet. Add one below, or start with the free channels.</p>
     </section>
