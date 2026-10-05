@@ -18,6 +18,17 @@ const SETTLE_MS = 2_000;
 /** After a move, a miss larger than this is corrected straight away (a few times at most). */
 const MISS_TOLERANCE_MS = 300;
 const QUICK_RETRIES = 2;
+/** Corrections (other than the first alignment and its quick retries) are at least this far apart... */
+const MIN_MOVE_INTERVAL_MS = 6_000;
+/** ...and at most this many a minute: seeking over and over can crash the Car Thing's browser. */
+const MOVES_PER_MINUTE = 4;
+/**
+ * When the picture is further ahead than its buffer lets it move back, it pauses for the rest
+ * instead, up to this long. Holding longer could leave it behind the stream's live window.
+ */
+const MAX_HOLD_MS = 10_000;
+/** After a correction that couldn't close the gap, the next waits at least this long. */
+const SHORTFALL_COOLDOWN_MS = 20_000;
 const POLL_MS = 1_000;
 /** How often the measured difference is logged, for troubleshooting sync. */
 const REPORT_MS = 15_000;
@@ -54,16 +65,22 @@ export class Sound {
   /** Set after moving the picture, until where it landed has been checked. */
   private checkingMove = false;
   private retries = 0;
+  /** When recent corrections happened, to cap them per minute. */
+  private moveTimes: number[] = [];
+  /** No corrections before this (after one that fell short, or too many in a minute). */
+  private blockedUntil = 0;
 
   constructor(
     private readonly client: BridgethingClient,
     private readonly link: ExtensionLink,
     private readonly log: (message: string) => void,
-    /** Moves the picture by this many milliseconds (positive is later in the stream). */
-    private readonly movePicture: (ms: number) => void,
+    /** Moves the picture by this many milliseconds (positive is later in the stream) as far as its buffer allows, returning how far it went. */
+    private readonly movePicture: (ms: number) => number,
+    /** Pauses the picture for this many milliseconds. */
+    private readonly holdPicture: (ms: number) => void,
   ) {
     client.player.onSnapshot((reply) => this.record(reply.state.playback));
-    window.setInterval(() => this.poll(), POLL_MS);
+    globalThis.setInterval(() => this.poll(), POLL_MS);
   }
 
   get isActive(): boolean {
@@ -80,6 +97,8 @@ export class Sound {
     this.aligned = false;
     this.checkingMove = false;
     this.driftCount = 0;
+    this.moveTimes = [];
+    this.blockedUntil = 0;
     // The extension notes where the host player starts as it loads; forget the last load.
     await this.link.resetHostTimeline(sessionID).catch(() => {});
     if (this.url !== url) return;
@@ -150,11 +169,36 @@ export class Sound {
     this.aligned = true;
     this.driftCount = 0;
     if (Math.abs(difference) < MISS_TOLERANCE_MS) return;
-    this.lastMoveAt = Date.now();
-    this.settledAt = Date.now();
-    this.checkingMove = true;
+    const now = Date.now();
+    if (reason !== 'start') {
+      if (now < this.blockedUntil) return;
+      if (reason !== 'retry' && now - this.lastMoveAt < MIN_MOVE_INTERVAL_MS) return;
+      this.moveTimes = this.moveTimes.filter((at) => now - at < 60_000);
+      if (this.moveTimes.length >= MOVES_PER_MINUTE) {
+        this.blockedUntil = this.moveTimes[0] + 60_000;
+        this.log(`Sync: ${MOVES_PER_MINUTE} corrections this minute; waiting before the next`);
+        return;
+      }
+    }
+    this.moveTimes.push(now);
+    this.lastMoveAt = now;
+    this.settledAt = now;
     this.log(`Moving the picture ${difference > 0 ? 'ahead' : 'back'} ${Math.round(Math.abs(difference))} ms to match the sound (${reason})`);
-    this.movePicture(difference);
+    const remaining = difference - this.movePicture(difference);
+    if (Math.abs(remaining) <= MISS_TOLERANCE_MS) {
+      this.checkingMove = true;
+      return;
+    }
+    // The buffer couldn't take the whole move, so retrying soon would only seek again for
+    // nothing. If the picture is still ahead, it waits for the sound instead.
+    this.checkingMove = false;
+    this.blockedUntil = now + SHORTFALL_COOLDOWN_MS;
+    if (remaining < 0) {
+      const hold = Math.min(-remaining, MAX_HOLD_MS);
+      this.log(`Pausing the picture ${Math.round(hold)} ms for the sound to catch up`);
+      this.holdPicture(hold);
+      this.settledAt = now + hold;
+    }
   }
 
   private hostPosition(): number | null {

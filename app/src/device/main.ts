@@ -51,6 +51,7 @@ class App {
     this.link,
     (message) => this.link.log(message),
     (ms) => this.player.shift(ms),
+    (ms) => this.player.hold(ms),
   );
   private readonly screen = new Screen();
   private readonly guide = new Guide();

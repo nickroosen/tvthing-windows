@@ -43,6 +43,8 @@ export class Player {
   private lastDiscontinuity: number | undefined;
   private spliceWatch: number | undefined;
   private startCount = 0;
+  /** Set while the picture is paused on purpose, to let the sound catch up. */
+  private holdTimer: number | undefined;
 
   constructor(
     private readonly video: HTMLVideoElement,
@@ -70,7 +72,7 @@ export class Player {
     });
     video.addEventListener('pause', () => {
       this.playing = false;
-      if (!this.url) return;
+      if (!this.url || this.holding) return;
       // Try resuming in place first; reload only if that doesn't take.
       video.play().catch(() => {});
       this.scheduleRecovery('unexpected pause', RECOVERY_DELAY_MS.pause);
@@ -97,6 +99,10 @@ export class Player {
     return this.startCount;
   }
 
+  get holding(): boolean {
+    return this.holdTimer !== undefined;
+  }
+
   get isPlaying(): boolean {
     return this.playing && !this.video.paused && !this.video.ended;
   }
@@ -107,6 +113,7 @@ export class Player {
   }
 
   stop(): void {
+    this.endHold();
     this.url = null;
     this.cancelRecovery();
     this.stopSpliceWatch();
@@ -119,9 +126,10 @@ export class Player {
 
   /**
    * Moves the picture by `ms` (positive is later in the stream) within what's already
-   * buffered, so it lines up with the sound. Moves as far as the buffer allows.
+   * buffered, so it lines up with the sound. Moves as far as the buffer allows, and returns
+   * how far that was.
    */
-  shift(ms: number): void {
+  shift(ms: number): number {
     const { buffered, currentTime } = this.video;
     for (let index = 0; index < buffered.length; index += 1) {
       const start = buffered.start(index);
@@ -132,9 +140,31 @@ export class Player {
       if (Math.abs(target - currentTime) * 1_000 < Math.abs(ms) - 50) {
         this.link.log(`Picture could only move ${Math.round((target - currentTime) * 1_000)} of ${Math.round(ms)} ms (buffered ${start.toFixed(1)}–${end.toFixed(1)} s at ${currentTime.toFixed(1)} s)`);
       }
-      if (Math.abs(target - currentTime) > 0.02) this.video.currentTime = target;
-      return;
+      if (Math.abs(target - currentTime) <= 0.02) return 0;
+      this.video.currentTime = target;
+      return (target - currentTime) * 1_000;
     }
+    return 0;
+  }
+
+  /**
+   * Pauses the picture for `ms`, so sound that's behind can catch up. Waiting has no limit
+   * from the buffer and, unlike a seek, can't upset the Car Thing's decoder.
+   */
+  hold(ms: number): void {
+    if (!this.url || ms <= 0) return;
+    window.clearTimeout(this.holdTimer);
+    this.holdTimer = window.setTimeout(() => {
+      this.endHold();
+      this.lastFrameAt = Date.now();
+      this.video.play().catch(() => {});
+    }, ms);
+    this.video.pause();
+  }
+
+  private endHold(): void {
+    window.clearTimeout(this.holdTimer);
+    this.holdTimer = undefined;
   }
 
   /** Nudges a paused video, e.g. after the user touches the screen. */
@@ -145,6 +175,7 @@ export class Player {
   private start(): void {
     const url = this.url;
     if (!url) return;
+    this.endHold();
     this.cancelRecovery();
     this.hls?.destroy();
     this.playing = false;
@@ -280,6 +311,10 @@ export class Player {
   }
 
   private checkForFrozenVideo(): void {
+    if (this.holding) {
+      this.lastFrameAt = Date.now();
+      return;
+    }
     const frames = this.frameCount();
     if (frames > this.lastFrameCount) {
       this.lastFrameCount = frames;
