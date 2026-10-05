@@ -1,6 +1,6 @@
 # Builds and tests TV Thing for Windows on Windows: typecheck, unit tests, the packaged zip, and an
 # end-to-end FFmpeg conversion with the extension limited to the manifest's permissions.
-# A pushed v* tag also attaches the zip to a GitHub release.
+# A pushed v* tag also creates a GitHub release (notes from the annotated tag) with the zip.
 name: Windows
 
 on:
@@ -58,5 +58,5 @@ jobs:
         run: |
           $zip = Get-Item dist/TVThing-Windows-*.zip
           gh release view $env:GITHUB_REF_NAME 2>$null
-          if ($LASTEXITCODE -ne 0) { gh release create $env:GITHUB_REF_NAME --generate-notes }
+          if ($LASTEXITCODE -ne 0) { gh release create $env:GITHUB_REF_NAME --title "TV Thing for Windows $env:GITHUB_REF_NAME" --notes-from-tag }
           gh release upload $env:GITHUB_REF_NAME $zip.FullName --clobber
