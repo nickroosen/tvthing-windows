@@ -45,7 +45,7 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
       # GitHub zips artifacts itself, so upload the app's files rather than the zip: the artifact
       # download is then the installable zip, not a zip inside a zip.
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: TVThing-Windows-${{ steps.version.outputs.version }}
           path: app/dist/app/
