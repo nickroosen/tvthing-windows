@@ -9,6 +9,7 @@
 // - `o/<token>`: FFmpeg's output
 
 import type { PlaybackMode, SourceReference } from '../../src/shared/library';
+import { fileURL } from './platform';
 import { conversionVariant, evaluate, parsePlaylist, type Playlist, preferredVariant } from './playlist';
 import { provider } from './providers';
 import { Relay, RelayError, type RelayResponse } from './relay';
@@ -17,7 +18,7 @@ import { Transcoder } from './transcoder';
 export type Delivery = { kind: 'direct' } | { kind: 'converted'; reason: string } | { kind: 'unconverted'; reason: string };
 
 export interface SessionEnvironment {
-  /** e.g. `http://127.0.0.1:17839` */
+  /** e.g. `http://127.0.0.1:17849` */
   origin: string;
   ffmpeg: () => string | null;
   log: (message: string) => void;
@@ -189,7 +190,7 @@ export class StreamSession {
   private async convertedEntry(range?: string): Promise<RelayResponse> {
     const playlist = await this.requireTranscoder().playlist();
     if (this.output?.playlist !== playlist) {
-      this.output = { playlist, relay: new Relay(`${this.basePath}/o/`, { entryURL: new URL(`file://${playlist}`) }) };
+      this.output = { playlist, relay: new Relay(`${this.basePath}/o/`, { entryURL: fileURL(playlist) }) };
     }
     return this.output.relay.entry(range);
   }
@@ -214,8 +215,8 @@ export class StreamSession {
 
 /**
  * Three clients load each stream: the Car Thing (through Bridgething, which names itself),
- * FFmpeg when converting (Lavf), and Bridgething's host player (AVPlayer on a Mac, whose
- * name varies by platform). The host player is whichever isn't one of the first two.
+ * FFmpeg when converting (Lavf), and Bridgething's host player (whose name varies by
+ * platform). The host player is whichever isn't one of the first two.
  */
 export function isHostPlayer(userAgent: string): boolean {
   return !/^(bridgething|Lavf)\//i.test(userAgent);

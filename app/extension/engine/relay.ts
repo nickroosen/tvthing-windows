@@ -135,7 +135,9 @@ export class Relay {
     } catch {
       return null;
     }
-    if (!['http:', 'https:', 'file:'].includes(url.protocol)) return null;
+    // Local files only from a local playlist (FFmpeg's output), never from a remote one.
+    const allowed = base.protocol === 'file:' ? ['file:'] : ['http:', 'https:'];
+    if (!allowed.includes(url.protocol)) return null;
     return this.mediaPrefix + this.token(url);
   }
 

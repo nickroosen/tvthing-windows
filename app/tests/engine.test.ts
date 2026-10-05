@@ -56,12 +56,14 @@ Deno.test("the host player's starting date is worked back from the first timesta
 
 Deno.test('telling the host player apart from the Car Thing and FFmpeg', () => {
   ok(isHostPlayer('AppleCoreMedia/1.0.0.26A434 (Macintosh; U; Intel Mac OS X 27_0_1; en_us)'));
+  ok(isHostPlayer('Lavf/61.7.100 (Windows host player)') === false);
+  ok(isHostPlayer('Mozilla/5.0 (Windows NT 10.0; Win64; x64)'));
   ok(!isHostPlayer('bridgething/0.13.1'));
   ok(!isHostPlayer('Lavf/62.12.101'));
 });
 
 Deno.test('FFmpeg paces and loops finished videos, but not live streams', () => {
-  const source = { url: new URL('http://127.0.0.1:17839/stream/x/source.m3u8'), onDemand: true };
+  const source = { url: new URL('http://127.0.0.1:17849/stream/x/source.m3u8'), onDemand: true };
   const first = arguments_(source, '/tmp/out', false);
   const loop = arguments_(source, '/tmp/out', true);
   ok(first.includes('-readrate_initial_burst'));

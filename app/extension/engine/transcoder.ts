@@ -1,6 +1,8 @@
 // Re-encodes a stream into Car Thing–friendly HLS with FFmpeg: H.264 main profile at up to
 // 800×480 and 30 fps, AAC stereo, even 2 s segments, and program-date-time stamps.
 
+import { currentOS, ffmpegCandidates, join, processEnvironment, workRoot } from './platform';
+
 export interface TranscodeSource {
   url: URL;
   /** A finished video rather than a live stream: paced to real time and looped. */
@@ -11,11 +13,9 @@ export interface TranscodeSource {
 
 type Log = (message: string) => void;
 
-/** Apps launched from Finder don't inherit the shell's PATH, so look in the usual places. */
+/** The first FFmpeg found in the usual places (see `ffmpegCandidates`), or null. */
 export function locateFFmpeg(): string | null {
-  const candidates = ['/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/opt/local/bin/ffmpeg'];
-  for (const dir of (Deno.env.get('PATH') ?? '').split(':')) if (dir) candidates.push(`${dir}/ffmpeg`);
-  for (const path of candidates) {
+  for (const path of ffmpegCandidates(currentOS(), processEnvironment)) {
     try {
       if (Deno.statSync(path).isFile) return path;
     } catch {
@@ -25,20 +25,7 @@ export function locateFFmpeg(): string | null {
   return null;
 }
 
-const WORK_ROOT = `${Deno.env.get('TMPDIR') ?? '/tmp/'}TVThing-Transcodes`.replace(/\/\//g, '/');
-
-/**
- * Runs FFmpeg (`$0 "$@"`) and stops it within a second if the extension goes away, however it
- * exits; there's no way to tie a child's life to its parent's. Without this, a crash could
- * leave FFmpeg running indefinitely. The shell exits with FFmpeg's status.
- */
-const WATCHDOG = `app=$PPID
-"$0" "$@" &
-child=$!
-trap 'kill $child 2>/dev/null; exit 143' TERM INT
-while kill -0 "$app" 2>/dev/null && kill -0 "$child" 2>/dev/null; do sleep 1; done
-kill "$child" 2>/dev/null
-wait "$child"`;
+const WORK_ROOT = workRoot(currentOS(), processEnvironment);
 
 /** FFmpeg finishing this soon after starting means a broken input, not the end of a video. */
 const MINIMUM_LOOP_MS = 3_000;
@@ -66,7 +53,7 @@ export class Transcoder {
     if (this.process && this.directory) return this.waitForPlaylist(this.directory);
     this.stop();
     this.stopped = false;
-    const directory = `${WORK_ROOT}/${crypto.randomUUID()}`;
+    const directory = join(currentOS(), WORK_ROOT, crypto.randomUUID());
     await Deno.mkdir(directory, { recursive: true });
     this.directory = directory;
     this.launch(directory, false);
@@ -81,6 +68,7 @@ export class Transcoder {
     this.process = null;
     this.directory = null;
     try {
+      // On Windows this ends FFmpeg at once (TerminateProcess); there's no gentler signal.
       process?.kill('SIGTERM');
     } catch {
       // Already gone.
@@ -89,19 +77,19 @@ export class Transcoder {
     if (directory) (process?.status ?? Promise.resolve()).finally(() => Deno.remove(directory, { recursive: true }).catch(() => {}));
   }
 
-  /** Stops conversions orphaned by an earlier crash and removes their output. */
+  /**
+   * Removes output left by an earlier crash. Windows has no equivalent of the Mac version's
+   * `pkill`, but an orphaned FFmpeg doesn't outlive the extension for long: it reads its input
+   * from the extension's relay, so it gives up within seconds once the relay is gone (see the
+   * read timeout in `arguments_`). Files it still holds open are skipped and removed next time.
+   */
   static async removeStaleOutput() {
-    try {
-      await new Deno.Command('/usr/bin/pkill', { args: ['-P', '1', '-f', WORK_ROOT], stdout: 'null', stderr: 'null' }).output();
-    } catch {
-      // Nothing to stop.
-    }
     await Deno.remove(WORK_ROOT, { recursive: true }).catch(() => {});
   }
 
   private launch(directory: string, continuing: boolean) {
-    const child = new Deno.Command('/bin/sh', {
-      args: ['-c', WATCHDOG, this.ffmpeg, ...arguments_(this.source, directory, continuing)],
+    const child = new Deno.Command(this.ffmpeg, {
+      args: arguments_(this.source, directory, continuing),
       stdin: 'null',
       stdout: 'null',
       stderr: 'piped',
@@ -130,7 +118,7 @@ export class Transcoder {
   }
 
   private async waitForPlaylist(directory: string): Promise<string> {
-    const playlist = `${directory}/index.m3u8`;
+    const playlist = join(currentOS(), directory, 'index.m3u8');
     const deadline = Date.now() + 20_000;
     while (Date.now() < deadline) {
       try {
@@ -178,6 +166,9 @@ export function arguments_(source: TranscodeSource, output: string, continuing: 
   return [
     '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
     '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '4',
+    // Give up on a read that stalls for 15 s, so FFmpeg exits if the extension (and its relay)
+    // goes away without stopping it.
+    '-rw_timeout', '15000000',
     ...pacing,
     '-i', source.url.href,
     '-map', `${streams}:v:0`, '-map', `${streams}:a:0?`,
@@ -192,7 +183,7 @@ export function arguments_(source: TranscodeSource, output: string, continuing: 
     '-c:a', 'aac', '-b:a', '128k', '-ac', '2', '-ar', '48000',
     '-f', 'hls', '-hls_time', '2', '-hls_list_size', '8', '-hls_delete_threshold', '4',
     '-hls_flags', flags,
-    '-hls_segment_filename', `${output}/segment-%06d.ts`,
-    `${output}/index.m3u8`,
+    '-hls_segment_filename', join(currentOS(), output, 'segment-%06d.ts'),
+    join(currentOS(), output, 'index.m3u8'),
   ];
 }
