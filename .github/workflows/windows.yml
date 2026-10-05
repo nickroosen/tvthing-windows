@@ -37,14 +37,19 @@ jobs:
       - name: End-to-end conversion with FFmpeg
         run: npm run smoke
       - name: Name the zip after the version
+        id: version
         shell: pwsh
         run: |
           $version = (Get-Content package.json | ConvertFrom-Json).version
           Copy-Item dist/TVThing-Windows.zip "dist/TVThing-Windows-$version.zip"
+          "version=$version" >> $env:GITHUB_OUTPUT
+      # GitHub zips artifacts itself, so upload the app's files rather than the zip: the artifact
+      # download is then the installable zip, not a zip inside a zip.
       - uses: actions/upload-artifact@v4
         with:
-          name: TVThing-Windows
-          path: app/dist/TVThing-Windows-*.zip
+          name: TVThing-Windows-${{ steps.version.outputs.version }}
+          path: app/dist/app/
+          if-no-files-found: error
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh

@@ -5,7 +5,7 @@
 // and dist/extension-dev.mjs, the same extension runnable on its own with Deno.
 // With --package, also zips dist/app for installing.
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as esbuild from 'esbuild';
@@ -93,8 +93,19 @@ if (watch) {
 if (pack) {
   const zip = join(dist, 'TVThing-Windows.zip');
   rmSync(zip, { force: true });
-  // Windows 10 and later include bsdtar, which writes zips; elsewhere use zip.
-  if (process.platform === 'win32') execFileSync('tar', ['-a', '-c', '-f', zip, '--exclude', '.*', '.'], { cwd: out });
-  else execFileSync('zip', ['-qrX', zip, '.', '-x', '.*'], { cwd: out });
-  console.log(`Packaged ${zip}`);
+  // The top-level entries are named rather than zipping `.`: excluding hidden files with a
+  // `.*` pattern also matches `.` itself, which left Windows' tar writing an empty zip.
+  const entries = readdirSync(out).filter((name) => !name.startsWith('.'));
+  // Windows 10 and later include bsdtar, which writes zips; elsewhere use zip. Windows' own tar
+  // is named in full so Git's GNU tar, which can't write zips, isn't picked up from PATH.
+  const windowsTar = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe');
+  if (process.platform === 'win32') execFileSync(windowsTar, ['-a', '-c', '-f', zip, ...entries], { cwd: out });
+  else execFileSync('zip', ['-qrX', zip, ...entries], { cwd: out });
+
+  // Check the zip has what Bridgething needs, so a broken package fails the build.
+  const listing = process.platform === 'win32' ? execFileSync(windowsTar, ['-t', '-f', zip], { encoding: 'utf8' }) : execFileSync('unzip', ['-Z1', zip], { encoding: 'utf8' });
+  const files = listing.split(/\r?\n/).map((line) => line.replace(/^\.\//, '').replace(/\\/g, '/'));
+  const missing = ['manifest.json', 'index.html', 'app.js', 'app.css', 'settings.html', 'extension/desktop.mjs'].filter((file) => !files.includes(file));
+  if (missing.length) throw new Error(`${zip} is missing ${missing.join(', ')}`);
+  console.log(`Packaged ${zip} (${files.filter(Boolean).length} entries, ${statSync(zip).size} bytes)`);
 }
