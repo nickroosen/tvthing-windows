@@ -1,12 +1,12 @@
 # Architecture
 
-TV Thing is one Bridgething app with three parts, all built from `app/`:
+TV Thing for Windows is one Bridgething app with three parts, all built from `app/`:
 
 | Part | Runs on | Source | Role |
 | --- | --- | --- | --- |
 | Car Thing app | Car Thing | `app/src/device/` | Plays the picture, keeps it in step with the sound, handles the controls |
 | Settings page | Bridgething desktop | `app/src/settings/` | Edits the lineup and preferences |
-| Extension | Computer (Deno, started by Bridgething) | `app/extension/` | Relays streams on `127.0.0.1:17839`, converting them with FFmpeg when needed |
+| Extension | Computer (Deno, started by Bridgething) | `app/extension/` | Relays streams on `127.0.0.1:17849`, converting them with FFmpeg when needed |
 
 The lineup and preferences live in Bridgething's doc storage for the app (`library`, `prefs`, and `current` docs; see `app/src/shared/library.ts`). The settings page and the Car Thing app both read and write them, and Bridgething delivers changes to the other side live. The extension keeps no channel data. It's told what to play on each tune.
 
@@ -29,10 +29,12 @@ The lineup and preferences live in Bridgething's doc storage for the app (`libra
 | `relay.ts` | Rewrites every URI in a playlist to a short local token and proxies the fetches. Concurrent requests share one upstream fetch, and responses are cached briefly (playlists 1 s, segments 60 s) |
 | `playlist.ts` | Playlist parsing, and whether the Car Thing can play a stream as-is |
 | `transcoder.ts` | FFmpeg: 800×480 H.264/AAC HLS with program-date-time stamps, 2 s segments |
+| `platform.ts` | Windows specifics: where to find `ffmpeg.exe`, the temp folder for conversions, and `file:` URLs for local paths |
 
 - **Sessions are per tune.** Each tune gets a fresh ID, so requests left over from the previous channel get a clean 404 instead of mixing streams. Nothing is resolved or fetched until a player asks for the playlist.
 - **Direct or converted.** A stream is relayed untouched if it's H.264 at 720p or less, has program-date-time stamps, and has segments under 500 KB. Otherwise FFmpeg converts it, if it's installed. Channels can be set to always do one or the other.
-- **FFmpeg reads the source relay**, never the upstream directly, so provider auth keeps working. On-demand videos are paced to real time and looped by restarting FFmpeg, appending to the same playlist. FFmpeg runs under a small shell watchdog that stops it within a second if the extension goes away, and it's paused after 45 s with no viewers.
+- **FFmpeg reads the source relay**, never the upstream directly, so provider auth keeps working. On-demand videos are paced to real time and looped by restarting FFmpeg, appending to the same playlist. FFmpeg is started directly (Windows has no `/bin/sh` for the Mac version's watchdog). If the extension goes away without stopping it, FFmpeg's input, the relay, goes with it, so FFmpeg gives up within seconds (a 15 s read timeout covers a relay that stalls instead of refusing). It's paused after 45 s with no viewers.
+- **Local files only from local playlists.** The relay follows `file:` references only in FFmpeg's own output, never in a playlist from the internet.
 - **Loopback only, with request hardening.** The server binds to 127.0.0.1 and rejects foreign `Host` headers (DNS rebinding) and non-JSON POSTs (cross-site form posts), so web pages can't drive it.
 
 ## Sync

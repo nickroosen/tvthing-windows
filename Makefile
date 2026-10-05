@@ -1,9 +1,9 @@
-# Common tasks. Everything lives in app/: the Car Thing app, its settings page, and the
+# Common tasks, for make on macOS, Linux or WSL. On Windows, run the npm scripts in app/ directly. Everything lives in app/: the Car Thing app, its settings page, and the
 # Bridgething extension that runs on the computer.
 
 .PHONY: all test dev release clean
 
-## Builds and zips the app → app/dist/TVThing.zip (also typechecks and runs the tests)
+## Builds and zips the app → app/dist/TVThing-Windows.zip (also typechecks and runs the tests)
 all:
 	cd app && npm install --no-audit --no-fund && npm run package
 
@@ -19,7 +19,7 @@ dev: all
 ## The download for a GitHub release, in dist/
 VERSION := $(shell node -p "require('./app/package.json').version")
 release: all
-	mkdir -p dist && cp app/dist/TVThing.zip dist/TVThing-$(VERSION).zip
+	mkdir -p dist && cp app/dist/TVThing-Windows.zip dist/TVThing-$(VERSION).zip
 	@echo "Release $(VERSION) is in dist/"
 
 clean:

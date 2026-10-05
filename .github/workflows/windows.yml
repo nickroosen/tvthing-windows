@@ -1,0 +1,57 @@
+# Builds and tests TV Thing for Windows on Windows: typecheck, unit tests, the packaged zip, and an
+# end-to-end FFmpeg conversion with the extension limited to the manifest's permissions.
+# A pushed v* tag also attaches the zip to a GitHub release.
+name: Windows
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Install FFmpeg
+        run: choco install ffmpeg -y --no-progress
+      - run: npm ci --no-audit --no-fund
+      - name: Typecheck, test, build and zip
+        run: npm run package
+      - name: End-to-end conversion with FFmpeg
+        run: npm run smoke
+      - name: Name the zip after the version
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          Copy-Item dist/TVThing-Windows.zip "dist/TVThing-Windows-$version.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TVThing-Windows
+          path: app/dist/TVThing-Windows-*.zip
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $zip = Get-Item dist/TVThing-Windows-*.zip
+          gh release view $env:GITHUB_REF_NAME 2>$null
+          if ($LASTEXITCODE -ne 0) { gh release create $env:GITHUB_REF_NAME --generate-notes }
+          gh release upload $env:GITHUB_REF_NAME $zip.FullName --clobber
