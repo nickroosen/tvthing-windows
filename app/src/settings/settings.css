@@ -93,7 +93,8 @@ button.icon.danger:hover { color: var(--danger); }
 button.quiet.danger { color: var(--danger); }
 button.quiet.danger.confirming { border-color: var(--danger); background: var(--danger); color: #fff; }
 #channels-message { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; }
-#channels-message[hidden], #delete-all[hidden] { display: none; }
+#channels-message[hidden], #delete-all[hidden], #check[hidden] { display: none; }
+.channels .name small.dead { color: var(--danger); }
 
 .channels { margin: 0; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); overflow: hidden; }
 .channels:empty { display: none; }

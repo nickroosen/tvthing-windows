@@ -1,7 +1,8 @@
 // TV Thing's local server, on the computer's loopback. The Car Thing reaches it through
 // Bridgething's net.fetch; Bridgething's host player and FFmpeg load stream URLs from it.
 
-import { API_VERSION, EXTENSION_PORT, type Health, type LogRequest, type HostTimeline, type SessionReply, type SessionRequest } from '../../src/shared/api';
+import { API_VERSION, type CheckReply, type CheckRequest, EXTENSION_PORT, type Health, type LogRequest, type HostTimeline, type SessionReply, type SessionRequest } from '../../src/shared/api';
+import { checkSources } from './checker';
 import { message, StreamSession } from './session';
 import { RelayError } from './relay';
 import { locateFFmpeg, Transcoder } from './transcoder';
@@ -100,6 +101,15 @@ export class Engine {
       if (!session || session.id !== parts[3]) return error('This stream has ended', 404);
       if (request.method === 'DELETE') session.resetHost();
       const reply: HostTimeline = { origin: session.hostOrigin };
+      return json(reply);
+    }
+    if (request.method === 'POST' && path === 'api/v1/check') {
+      const body = (await request.json()) as CheckRequest;
+      const sources = Array.isArray(body?.sources) ? body.sources : null;
+      if (!sources || sources.length > 50 || !sources.every((s) => typeof s?.provider === 'string' && typeof s?.value === 'string')) {
+        return error('Expected up to 50 sources', 400);
+      }
+      const reply: CheckReply = { results: await checkSources(sources) };
       return json(reply);
     }
     if (request.method === 'GET' && path === 'api/v1/log') {

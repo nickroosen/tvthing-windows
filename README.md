@@ -73,6 +73,8 @@ Open **TV Thing for Windows' settings** in the Bridgething desktop app.
 - **Import a file:** TV Thing **channel packs** (`.tvthing`, [format](docs/channel-packs.md)) and **M3U** playlists. Channels already in your lineup are skipped.
 - **Add the free channels:** free live channels that broadcasters publish themselves (Al Jazeera English, Red Bull TV, PBS Kids, Africanews, CBS News Miami, Bloomberg Originals, France 24, DW, NHK World-Japan, Arirang, and Fox Weather), plus a test stream. Some need FFmpeg. Free streams can change or go offline at any time.
 
+**Check channels** tries every channel's stream and marks the ones that no longer work, with an option to delete them together; **Delete all…** clears the lineup. Both can be undone.
+
 Each channel can be renamed, reordered, deleted, given one of the Car Thing's buttons 1–4, or set to always play directly or always convert. Changes reach the Car Thing straight away.
 
 ## Finding streams
@@ -104,6 +106,7 @@ Settings also has CRT scanlines and sound timing.
 
 | Problem | Try |
 | --- | --- |
+| A channel says "Upstream returned HTTP 404" | The stream's link is dead or has moved. **Check channels** in settings finds every channel like this. |
 | "Can't reach your computer" | Make sure the Bridgething desktop app is running and the Car Thing shows as connected. TV Thing's settings show whether its helper is running. |
 | A channel won't play | Install FFmpeg (see [Installing FFmpeg](#installing-ffmpeg)) and restart Bridgething. Some streams need converting for the Car Thing. In settings, try setting the channel to **Always convert**. |
 | Settings say FFmpeg isn't installed, but it is | Restart the Bridgething desktop app so it sees the updated PATH, or check `ffmpeg.exe` is in one of the [places TV Thing looks](#installing-ffmpeg). |

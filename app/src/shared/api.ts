@@ -36,3 +36,13 @@ export interface HostTimeline {
   /** Program-date-time (Unix ms) where the host player's position counts from, once known. */
   origin: number | null;
 }
+
+/** `POST /api/v1/check`: whether each channel's stream still answers. */
+export interface CheckRequest {
+  sources: SourceReference[];
+}
+
+export interface CheckReply {
+  /** In the same order as the request's sources. */
+  results: { ok: boolean; reason?: string }[];
+}

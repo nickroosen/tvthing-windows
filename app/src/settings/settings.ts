@@ -2,7 +2,7 @@
 // storage the Car Thing app reads, so changes reach the Car Thing live.
 
 import { settings } from '@bridgething/client/settings';
-import { API_VERSION, EXTENSION_ORIGIN, type Health } from '../shared/api';
+import { API_VERSION, type CheckReply, EXTENSION_ORIGIN, type Health } from '../shared/api';
 import {
   type Channel,
   DOC,
@@ -25,6 +25,8 @@ import { STARTER_CHANNELS } from '../shared/starter';
 const DOC_LIMIT_BYTES = 250_000;
 const OFFSET_STEP_MS = 50;
 const OFFSET_LIMIT_MS = 5_000;
+/** Channels sent to the helper per request when checking. */
+const CHECK_BATCH = 10;
 /** How long "Delete all" waits for its confirming second click. */
 const CONFIRM_MS = 5_000;
 
@@ -32,6 +34,9 @@ let library: Library = normalizeLibrary(null);
 let prefs: Prefs = parsePrefs(null);
 let editingID: string | null = null;
 let confirmDeleteAll: ReturnType<typeof setTimeout> | null = null;
+/** Why each channel failed the last check, by channel id. */
+let deadChannels = new Map<string, string>();
+let checking = false;
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -83,6 +88,7 @@ function renderChannels() {
   $('count').textContent = count === 1 ? '1 channel' : `${count} channels`;
   $('empty').hidden = count > 0;
   $('delete-all').hidden = count === 0;
+  $('check').hidden = count === 0;
   if (count === 0) resetDeleteAll();
   library.channels.forEach((channel, index) => {
     const row = document.createElement('li');
@@ -96,7 +102,9 @@ function renderChannels() {
     const title = document.createElement('strong');
     title.textContent = channel.name;
     const detail = document.createElement('small');
-    detail.textContent = describeSource(channel);
+    const dead = deadChannels.get(channel.id);
+    detail.textContent = dead ? `Not working: ${dead}` : describeSource(channel);
+    if (dead) detail.className = 'dead';
     name.append(title, detail);
 
     const slot = document.createElement('select');
@@ -146,9 +154,14 @@ function deleteAll() {
     return;
   }
   resetDeleteAll();
+  deleteChannels(new Set(library.channels.map((channel) => channel.id)));
+}
+
+/** Deletes channels and offers to undo it. */
+function deleteChannels(ids: Set<string>) {
   const previous = library;
-  const deleted = previous.channels.length;
-  saveLibrary(removeChannels(previous, new Set(previous.channels.map((channel) => channel.id))));
+  const deleted = previous.channels.filter((channel) => ids.has(channel.id)).length;
+  saveLibrary(removeChannels(previous, ids));
 
   const message = $('channels-message');
   const undo = document.createElement('button');
@@ -156,12 +169,73 @@ function deleteAll() {
   undo.textContent = 'Undo';
   undo.addEventListener('click', async () => {
     message.hidden = true;
-    // Keep anything added since, after the restored channels.
+    // Restore the old lineup, keeping anything added since after it.
     const added = library.channels.filter((channel) => !previous.channels.some((old) => old.id === channel.id));
     await saveLibrary({ ...previous, channels: [...previous.channels, ...added] });
   });
   message.className = 'message good';
   message.replaceChildren(deleted === 1 ? 'Deleted 1 channel.' : `Deleted ${deleted} channels.`, undo);
+  message.hidden = false;
+}
+
+// Checking channels: the helper tries each stream, and dead ones can be deleted together.
+
+async function checkChannels() {
+  if (checking) return;
+  checking = true;
+  const button = $<HTMLButtonElement>('check');
+  const message = $('channels-message');
+  const channels = [...library.channels];
+  button.disabled = true;
+  deadChannels = new Map();
+  message.hidden = true;
+  try {
+    for (let start = 0; start < channels.length; start += CHECK_BATCH) {
+      button.textContent = `Checking ${start} of ${channels.length}…`;
+      const batch = channels.slice(start, start + CHECK_BATCH);
+      const response = await settings.fetch(`${EXTENSION_ORIGIN}/api/v1/check`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sources: batch.map((channel) => channel.source) }),
+        timeoutMs: 60_000,
+      });
+      if (!response.ok) throw new Error(response.status === 404 ? 'Reinstall TV Thing for Windows: its helper is older than this page.' : `The helper answered HTTP ${response.status}.`);
+      const { results } = (await response.json()) as CheckReply;
+      batch.forEach((channel, index) => {
+        const result = results[index];
+        if (result && !result.ok) deadChannels.set(channel.id, result.reason ?? 'No answer');
+      });
+      renderChannels();
+    }
+    showCheckSummary(channels.length);
+  } catch (error) {
+    alertMessage(message, `Couldn’t finish checking. ${(error as Error).message || 'Make sure Bridgething is running on your computer.'}`, true);
+    message.hidden = false;
+  } finally {
+    checking = false;
+    button.disabled = false;
+    button.textContent = 'Check channels';
+  }
+}
+
+function showCheckSummary(checked: number) {
+  const message = $('channels-message');
+  // Only channels still in the lineup (some may have been deleted while checking).
+  const dead = new Set(library.channels.filter((channel) => deadChannels.has(channel.id)).map((channel) => channel.id));
+  if (dead.size === 0) {
+    alertMessage(message, checked === 1 ? 'The channel is working.' : `All ${checked} channels are working.`);
+    message.hidden = false;
+    return;
+  }
+  const remove = document.createElement('button');
+  remove.className = 'quiet danger';
+  remove.textContent = dead.size === 1 ? 'Delete it' : `Delete these ${dead.size}`;
+  remove.addEventListener('click', () => {
+    for (const id of dead) deadChannels.delete(id);
+    deleteChannels(dead);
+  });
+  message.className = 'message error';
+  message.replaceChildren(`${checked - dead.size} working, ${dead.size} not working.`, remove);
   message.hidden = false;
 }
 
@@ -363,6 +437,7 @@ $('add').addEventListener('submit', addFromURL);
 $('import-file').addEventListener('change', (event) => importFile(event.target as HTMLInputElement));
 $('starter').addEventListener('click', addStarter);
 $('delete-all').addEventListener('click', deleteAll);
+$('check').addEventListener('click', checkChannels);
 $('export').addEventListener('click', exportChannels);
 $('scanlines').addEventListener('change', (event) => savePrefs({ ...prefs, scanlines: (event.target as HTMLInputElement).checked }));
 $('offset-down').addEventListener('click', () => shiftOffset(-OFFSET_STEP_MS));

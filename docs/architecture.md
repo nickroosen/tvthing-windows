@@ -29,6 +29,7 @@ The lineup and preferences live in Bridgething's doc storage for the app (`libra
 | `relay.ts` | Rewrites every URI in a playlist to a short local token and proxies the fetches. Concurrent requests share one upstream fetch, and responses are cached briefly (playlists 1 s, segments 60 s) |
 | `playlist.ts` | Playlist parsing, and whether the Car Thing can play a stream as-is |
 | `transcoder.ts` | FFmpeg: 800×480 H.264/AAC HLS with program-date-time stamps, 2 s segments |
+| `checker.ts` | "Check channels" in settings (`POST /api/v1/check`): loads each channel's playlist, and its variant, to see whether it still has video |
 | `platform.ts` | Windows specifics: where to find `ffmpeg.exe`, the temp folder for conversions, and `file:` URLs for local paths |
 
 - **Sessions are per tune.** Each tune gets a fresh ID, so requests left over from the previous channel get a clean 404 instead of mixing streams. Nothing is resolved or fetched until a player asks for the playlist.
