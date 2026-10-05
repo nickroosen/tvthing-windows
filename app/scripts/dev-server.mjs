@@ -1,7 +1,7 @@
 // Serves the built webapp for a desktop browser and proxies /ext/* to the extension,
 // standing in for Bridgething. Run the extension on its own first:
 //
-//   deno run -A dist/extension-dev.mjs
+//   npm run dev:extension   (or: deno run -A dist/extension-dev.mjs)
 //   npm run dev
 //
 // then open http://localhost:5173/?browser (the Car Thing app) or /settings-dev (settings).
@@ -12,7 +12,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(fileURLToPath(new URL('..', import.meta.url)), 'dist', 'app');
-const extensionPort = Number(process.env.TVTHING_PORT ?? 17839);
+const extensionPort = Number(process.env.TVTHING_PORT ?? 17849);
 const port = Number(process.env.PORT ?? 5173);
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json' };
 

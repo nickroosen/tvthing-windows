@@ -61,7 +61,7 @@ video {
 #static.on.settling { animation: static-thin 2.5s steps(14, end) forwards; }
 #static.on.locking { animation: static-out 0.45s steps(5, end) forwards; }
 
-/* Scanlines: during tuning, and always in CRT mode (a Mac setting). */
+/* Scanlines: during tuning, and always in CRT mode (a setting). */
 .scanlines {
   position: absolute;
   inset: 0;

@@ -166,10 +166,10 @@ async function checkHelper() {
     const health = (await response.json()) as Health;
     if (health.api < API_VERSION) {
       status.className = 'status bad';
-      status.textContent = 'The old TV Thing Mac app is running. Quit it so the Car Thing can use this version.';
+      status.textContent = 'An older version of TV Thing for Windows is using its port. Restart Bridgething so the Car Thing can use this version.';
     } else if (!health.ffmpeg) {
       status.className = 'status warn';
-      status.textContent = 'Ready. FFmpeg isn’t installed, so some channels may not play (install it with: brew install ffmpeg).';
+      status.textContent = 'Ready. FFmpeg isn’t installed, so some channels may not play (install it with: winget install Gyan.FFmpeg, then restart Bridgething).';
     } else {
       status.className = 'status good';
       status.textContent = `Ready · version ${health.version} · FFmpeg found`;

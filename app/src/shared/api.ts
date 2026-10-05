@@ -4,7 +4,7 @@
 
 import type { PlaybackMode, SourceReference } from './library';
 
-export const EXTENSION_PORT = 17839;
+export const EXTENSION_PORT = 17849;
 export const EXTENSION_ORIGIN = `http://127.0.0.1:${EXTENSION_PORT}`;
 export const API_VERSION = 2;
 

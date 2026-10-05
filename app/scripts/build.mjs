@@ -1,4 +1,4 @@
-// Builds TV Thing for Bridgething into dist/app/:
+// Builds TV Thing for Windows into dist/app/:
 // - app.js, app.css: the Car Thing app
 // - settings.html: the settings page, as one self-contained file
 // - extension/desktop.mjs: the extension that runs on the computer
@@ -91,8 +91,10 @@ if (watch) {
 }
 
 if (pack) {
-  const zip = join(dist, 'TVThing.zip');
+  const zip = join(dist, 'TVThing-Windows.zip');
   rmSync(zip, { force: true });
-  execFileSync('zip', ['-qrX', zip, '.', '-x', '.*'], { cwd: out });
+  // Windows 10 and later include bsdtar, which writes zips; elsewhere use zip.
+  if (process.platform === 'win32') execFileSync('tar', ['-a', '-c', '-f', zip, '--exclude', '.*', '.'], { cwd: out });
+  else execFileSync('zip', ['-qrX', zip, '.', '-x', '.*'], { cwd: out });
   console.log(`Packaged ${zip}`);
 }
