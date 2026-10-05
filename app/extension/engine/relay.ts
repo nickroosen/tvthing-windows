@@ -69,12 +69,14 @@ export class Relay {
   }
 
   private async load(url: URL, range: string | undefined, key: string): Promise<RelayResponse> {
-    const { body, status, contentType, contentRange } = await this.download(url, range);
+    const { body, status, contentType, contentRange, finalURL } = await this.download(url, range);
     const playlist = isPlaylist(body);
     const headers: Record<string, string> = { 'Cache-Control': 'no-store' };
     let output = body;
     if (playlist) {
-      output = new TextEncoder().encode(this.rewrite(new TextDecoder().decode(body), url));
+      // Relative URIs are relative to where the playlist actually came from, which differs
+      // from the requested URL when it redirected (e.g. jmp2.uk links to Pluto TV).
+      output = new TextEncoder().encode(this.rewrite(new TextDecoder().decode(body), finalURL));
       headers['Content-Type'] = 'application/vnd.apple.mpegurl';
     } else {
       headers['Content-Type'] = contentType ?? contentTypeFor(url);
@@ -88,7 +90,7 @@ export class Relay {
   private async download(url: URL, range?: string) {
     if (url.protocol === 'file:') {
       try {
-        return { body: await Deno.readFile(url), status: 200, contentType: undefined, contentRange: undefined };
+        return { body: await Deno.readFile(url), status: 200, contentType: undefined, contentRange: undefined, finalURL: url };
       } catch {
         throw new RelayError(404, "Stream data isn't ready yet");
       }
@@ -110,6 +112,7 @@ export class Relay {
       status: response.status,
       contentType: response.headers.get('Content-Type') ?? undefined,
       contentRange: response.headers.get('Content-Range') ?? undefined,
+      finalURL: response.redirected && response.url ? new URL(response.url) : url,
     };
   }
 

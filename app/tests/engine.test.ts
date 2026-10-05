@@ -71,3 +71,24 @@ Deno.test('FFmpeg paces and loops finished videos, but not live streams', () => 
   ok(loop[loop.indexOf('-hls_flags') + 1].includes('append_list+discont_start'));
   ok(!arguments_({ ...source, onDemand: false }, '/tmp/out', false).includes('-readrate'));
 });
+
+Deno.test('playlists reached through a redirect resolve their URIs from where they ended up', async () => {
+  // Like jmp2.uk links, which redirect to the real playlist on another server.
+  const server = Deno.serve({ hostname: '127.0.0.1', port: 0, onListen: () => {} }, (request) => {
+    const path = new URL(request.url).pathname;
+    if (path === '/plu-channel.m3u8') return Response.redirect(new URL('/stitch/live/master.m3u8?sid=1', request.url), 302);
+    if (path === '/stitch/live/master.m3u8') return new Response('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000\n360/playlist.m3u8\n');
+    if (path === '/stitch/live/360/playlist.m3u8') return new Response('#EXTM3U\n#EXTINF:6.0,\nseg1.ts\n');
+    return new Response('not found', { status: 404 });
+  });
+  try {
+    const origin = `http://127.0.0.1:${server.addr.port}`;
+    const relay = new Relay('/stream/abc/s/', { entryURL: new URL(`${origin}/plu-channel.m3u8`) });
+    const master = new TextDecoder().decode((await relay.entry()).body);
+    const variant = master.split('\n').find((line) => line.startsWith('/stream/'))!;
+    const media = new TextDecoder().decode((await relay.media(variant.split('/').pop()!)).body);
+    ok(media.includes('#EXTINF'), `the variant playlist loaded: ${media}`);
+  } finally {
+    await server.shutdown();
+  }
+});
